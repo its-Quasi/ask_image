@@ -68,7 +68,9 @@ class ImageAnnotator:
             Annotated image with masks and boxes
         """
 
-        self.box_annotator.annotate()
+        if len(detections.xyxy) == 0:
+            return image
+
         if detections.mask is None:
             return self.annotate_boxes(image, detections, labels)
 
@@ -83,7 +85,7 @@ class ImageAnnotator:
         annotated = self.box_annotator.annotate(
             scene=annotated, detections=detections, labels=labels
         )
-        
+
         return annotated
 
     @staticmethod
