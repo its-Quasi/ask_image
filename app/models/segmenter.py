@@ -4,7 +4,6 @@ Handles precise segmentation of detected objects using bounding boxes.
 """
 
 import numpy as np
-import torch
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from supervision import Detections

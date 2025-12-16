@@ -56,7 +56,7 @@ class GroundingDINODetector:
     def detect(
         self,
         image: np.ndarray,
-        text_prompt: str,
+        classes: str,
         box_threshold: float = BOX_THRESHOLD,
         text_threshold: float = TEXT_THRESHOLD,
     ) -> Detections:
@@ -72,8 +72,6 @@ class GroundingDINODetector:
         Returns:
             Detections object containing bounding boxes, confidence scores, and class IDs
         """
-        # Parse classes from text prompt
-        classes = [cls.strip() for cls in text_prompt.split(",")]
 
         # Run detection
         detections = self.model.predict_with_classes(
