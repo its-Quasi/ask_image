@@ -82,3 +82,6 @@ htmlcov/
 *.tmp
 *.bak
 temp/
+
+# Claude
+.claude
