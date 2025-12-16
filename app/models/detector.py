@@ -73,7 +73,7 @@ class GroundingDINODetector:
             Detections object containing bounding boxes, confidence scores, and class IDs
         """
         # Parse classes from text prompt
-        classes = [cls.strip() for cls in text_prompt.split(",")]
+        classes = [cls.strip().lower() for cls in text_prompt.split(".") if cls.strip()]
 
         # Run detection
         detections = self.model.predict_with_classes(

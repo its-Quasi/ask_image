@@ -8,7 +8,7 @@ from pathlib import Path
 from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 
-from app.pipeline.processor import ImageProcessor
+from app.pipeline.processor import ImageProcessor, ReasoningImageProcessor
 from app.core.config import UPLOADS_DIR, is_allowed_file, BASE_DIR
 
 # Initialize Flask app
@@ -19,16 +19,25 @@ app = Flask(__name__,
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['UPLOAD_FOLDER'] = str(UPLOADS_DIR)
 
-# Initialize processor (lazy loading to avoid model loading on import)
+# Initialize processors (lazy loading to avoid model loading on import)
 processor = None
+reasoning_processor = None
 
 
 def get_processor():
-    """Get or initialize the image processor."""
+    """Get or initialize the standard image processor."""
     global processor
     if processor is None:
         processor = ImageProcessor()
     return processor
+
+
+def get_reasoning_processor():
+    """Get or initialize the reasoning image processor."""
+    global reasoning_processor
+    if reasoning_processor is None:
+        reasoning_processor = ReasoningImageProcessor()
+    return reasoning_processor
 
 
 @app.route('/')
@@ -158,12 +167,133 @@ def process_image():
         }), 500
 
 
+@app.route('/ask', methods=['POST'])
+def ask_question():
+    """
+    Process a natural language question about an uploaded image.
+
+    Expected form data:
+        - image: Image file
+        - question: Natural language question (e.g., "How many red cars?")
+
+    Returns:
+        JSON with:
+            - success: Boolean
+            - question: Original question
+            - answer: Natural language answer
+            - intent: Detected intent
+            - num_detections: Number of objects detected
+            - annotated_image: Base64 encoded annotated image
+            - segmented_image: Base64 encoded segmented image
+    """
+    try:
+        # Validate request
+        if 'image' not in request.files:
+            return jsonify({
+                'success': False,
+                'message': 'No image file provided'
+            }), 400
+
+        if 'question' not in request.form:
+            return jsonify({
+                'success': False,
+                'message': 'No question provided'
+            }), 400
+
+        file = request.files['image']
+        question = request.form['question'].strip()
+
+        # Validate file
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'message': 'No file selected'
+            }), 400
+
+        if not is_allowed_file(file.filename):
+            return jsonify({
+                'success': False,
+                'message': 'Invalid file type. Allowed: jpg, jpeg, png, bmp, webp'
+            }), 400
+
+        # Validate question
+        if not question:
+            return jsonify({
+                'success': False,
+                'message': 'Question cannot be empty'
+            }), 400
+
+        # Save uploaded file
+        filename = secure_filename(file.filename)
+        filepath = Path(app.config['UPLOAD_FOLDER']) / filename
+        file.save(str(filepath))
+
+        # Get thresholds from request (optional)
+        box_threshold = float(request.form.get('box_threshold', 0.35))
+        text_threshold = float(request.form.get('text_threshold', 0.25))
+        # apply_nms = request.form.get('apply_nms', 'true').lower() == 'true'
+
+        # Process question with reasoning pipeline
+        proc = get_reasoning_processor()
+
+        # Use array-based method for web interface
+        import cv2
+        image = cv2.imread(str(filepath))
+
+        result = proc.answer_question_array(
+            image=image,
+            question=question,
+            box_threshold=box_threshold,
+            text_threshold=text_threshold,
+            apply_nms=False,
+        )
+
+        # Check if processing failed
+        if not result.get('success', False):
+            return jsonify({
+                'success': False,
+                'message': result.get('error', 'Unknown error occurred'),
+                'question': question,
+            }), 400
+
+        # Encode images to base64
+        import numpy as np
+
+        def encode_image(img_array: np.ndarray) -> str:
+            """Encode numpy array image to base64."""
+            _, buffer = cv2.imencode('.jpg', img_array)
+            return base64.b64encode(buffer).decode('utf-8')
+
+        annotated_b64 = encode_image(result['annotated_image'])
+        segmented_b64 = encode_image(result['segmented_image'])
+
+        return jsonify({
+            'success': True,
+            'question': result['question'],
+            'answer': result['answer'],
+            'intent': result['intent'],
+            'num_detections': result['num_detections'],
+            'class_names': result['class_names'],
+            'annotated_image': f'data:image/jpeg;base64,{annotated_b64}',
+            'segmented_image': f'data:image/jpeg;base64,{segmented_b64}',
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'Error processing question: {str(e)}'
+        }), 500
+
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
     return jsonify({
         'status': 'healthy',
-        'models_loaded': processor is not None
+        'processor_loaded': processor is not None,
+        'reasoning_processor_loaded': reasoning_processor is not None,
     })
 
 
