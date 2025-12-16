@@ -105,6 +105,7 @@ document.addEventListener('DOMContentLoaded', function () {
             processBtn.disabled = false;
 
             if (result.success) {
+                window.alert(result.answer)
                 if (result.num_detections === 0) {
                     // No detections found
                     showAlert(result.message, 'info');
@@ -139,6 +140,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 </h6>
             </div>
         `;
+
+        if (result.answer) {
+            html += `
+            <div class="alert alert-info mt-3">
+                <h6 class="mb-2">
+                    <i class="fas fa-brain"></i> Respuesta
+                </h6>
+                <p class="mb-0">${result.answer}</p>
+            </div>
+        `;
+        }
 
         if (result.detections && result.detections.length > 0) {
             html += '<div class="mt-3"><h6>Detecciones:</h6>';

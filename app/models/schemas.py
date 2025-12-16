@@ -53,6 +53,7 @@ class DetectionResult(BaseModel):
     confidences: List[float] = Field(
         ..., description="Confidence scores for each detection"
     )
+    class_id: Optional[list[int]] = Field(None, description="")
     bounding_boxes: Optional[List[List[float]]] = Field(
         None, description="Bounding box coordinates"
     )

@@ -8,6 +8,7 @@ import logging
 from typing import Dict, Any
 from ollama import Client
 from pydantic import ValidationError
+from supervision import Detections
 
 from app.core.config import SYSTEM_PROMPT, MODEL
 from app.models.schemas import DetectionResult, CompareQueryResult, SimpleQueryResult
@@ -65,8 +66,9 @@ class LlmModel:
         self,
         question: str,
         intent: str,
-        detection_result: DetectionResult,
+        detections: Detections,
         parsed_query: SimpleQueryResult | CompareQueryResult,
+        class_names: list[str],
     ) -> str:
         """
         Generates a natural language answer based on detection results.
@@ -74,14 +76,15 @@ class LlmModel:
         Args:
             question: Original user question
             intent: Detected intent (detect, count, compare_count, etc.)
-            detection_result: Results from DINO detection
+            detections: Supervision Detections object with detection results
             parsed_query: Parsed query structure
+            class_names: List of class names where index matches class_id
 
         Returns:
             Natural language answer string
         """
         # Build context for answer generation
-        context = self._build_answer_context(intent, detection_result, parsed_query)
+        context = self._build_answer_context(intent, detections, parsed_query, class_names)
 
         answer_prompt = f"""
         Based on the following detection results, answer the user's question naturally and concisely.
@@ -112,7 +115,7 @@ class LlmModel:
         except Exception as e:
             logger.error(f"Error generating answer: {str(e)}")
             # Fallback to simple answer
-            return self._generate_fallback_answer(intent, detection_result)
+            return self._generate_fallback_answer(intent, detections)
 
     def _extract_json(self, content: str) -> Dict[str, Any]:
         """
@@ -164,23 +167,77 @@ class LlmModel:
     def _build_answer_context(
         self,
         intent: str,
-        detection_result: DetectionResult,
+        detections: Detections,
         parsed_query: SimpleQueryResult | CompareQueryResult,
+        class_names: list[str],
     ) -> str:
         """
         Builds context string for answer generation based on intent.
+
+        Args:
+            intent: Type of query (detect, count, exists, compare_count)
+            detections: Supervision Detections object with class_id array
+            parsed_query: Parsed query from LLM
+            class_names: List of class names where index matches class_id
+                        Example: ['cat', 'chair'] means class_id 0='cat', 1='chair'
+
+        Returns:
+            Formatted context string describing what was detected
+
+        Example:
+            detections.class_id = [0, 0, 1]
+            class_names = ['cat', 'chair']
+            -> "Detected 2 cats and 1 chair"
         """
+        total_count = len(detections.xyxy) if detections is not None and len(detections.xyxy) > 0 else 0
+
+        if total_count == 0:
+            return "No objects were detected in the image."
+
+        # Map class_id to actual class names and count occurrences
+        detected_objects = {}
+        for i, class_id in enumerate(detections.class_id):
+            class_name = class_names[class_id] if class_id < len(class_names) else f"class_{class_id}"
+            confidence = detections.confidence[i] if detections.confidence is not None else 0.0
+
+            if class_name not in detected_objects:
+                detected_objects[class_name] = {
+                    'count': 0,
+                    'confidences': []
+                }
+
+            detected_objects[class_name]['count'] += 1
+            detected_objects[class_name]['confidences'].append(confidence)
+
+        # Build context based on intent
         if intent in ["detect", "count", "exists"]:
-            objects = ", ".join(parsed_query.objects)
-            return f"- Detected {detection_result.count} instance(s) of: {objects}\n- Classes found: {', '.join(detection_result.class_names)}"
+            # Build detailed description
+            parts = []
+            for class_name, info in detected_objects.items():
+                count = info['count']
+                avg_conf = sum(info['confidences']) / len(info['confidences']) * 100
+                parts.append(f"{count} {class_name}(s) with {avg_conf:.1f}% confidence")
+
+            objects_str = ", ".join(parts)
+            return f"- Total detections: {total_count}\n- Detected: {objects_str}"
 
         elif intent == "compare_count":
-            # For compare, we need to split detections by object type
-            # This is a simplified version - you might want more sophisticated logic
-            return f"- Total detections: {detection_result.count}\n- Classes: {', '.join(detection_result.class_names)}"
+            # For comparison queries, provide counts per class
+            left_objects = parsed_query.left.objects
+            right_objects = parsed_query.right.objects
+
+            left_count = sum(detected_objects.get(obj, {}).get('count', 0) for obj in left_objects)
+            right_count = sum(detected_objects.get(obj, {}).get('count', 0) for obj in right_objects)
+
+            left_str = ", ".join(left_objects)
+            right_str = ", ".join(right_objects)
+
+            return f"- {left_str}: {left_count} detected\n- {right_str}: {right_count} detected\n- Comparison: {left_count} vs {right_count}"
 
         else:
-            return f"- Total detections: {detection_result.count}\n- Classes: {', '.join(detection_result.class_names)}"
+            # Generic fallback
+            parts = [f"{count} {name}(s)" for name, info in detected_objects.items() for count in [info['count']]]
+            return f"- Total detections: {total_count}\n- Found: {', '.join(parts)}"
 
     def _generate_fallback_answer(
         self, intent: str, detection_result: DetectionResult
