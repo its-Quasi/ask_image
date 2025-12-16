@@ -78,7 +78,7 @@ class ImageAnnotator:
 
         # Draw masks first
         annotated = self.mask_annotator.annotate(
-            scene=annotated, detections=detections, labels=labels
+            scene=annotated, detections=detections
         )
 
         # Then draw boxes on top
