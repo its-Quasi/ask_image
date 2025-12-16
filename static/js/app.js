@@ -1,6 +1,6 @@
 // Main JavaScript for Grounding DINO + SAM2 Web Interface
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     // DOM Elements
     const uploadForm = document.getElementById('uploadForm');
     const imageInput = document.getElementById('imageInput');
@@ -23,16 +23,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const applyNMS = document.getElementById('applyNMS');
 
     // Update threshold display values
-    boxThreshold.addEventListener('input', function() {
+    boxThreshold.addEventListener('input', function () {
         boxThresholdValue.textContent = this.value;
     });
 
-    textThreshold.addEventListener('input', function() {
+    textThreshold.addEventListener('input', function () {
         textThresholdValue.textContent = this.value;
     });
 
     // Image preview on file selection
-    imageInput.addEventListener('change', function(e) {
+    imageInput.addEventListener('change', function (e) {
         const file = e.target.files[0];
         if (file) {
             // Validate file size (16MB max)
@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Show preview
             const reader = new FileReader();
-            reader.onload = function(event) {
+            reader.onload = function (event) {
                 imagePreview.src = event.target.result;
                 previewContainer.style.display = 'block';
             };
@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Form submission
-    uploadForm.addEventListener('submit', async function(e) {
+    uploadForm.addEventListener('submit', async function (e) {
         e.preventDefault();
 
         // Validate inputs
@@ -80,10 +80,10 @@ document.addEventListener('DOMContentLoaded', function() {
         // Prepare form data
         const formData = new FormData();
         formData.append('image', imageInput.files[0]);
-        formData.append('prompt', textPrompt.value.trim());
+        formData.append('question', textPrompt.value.trim());
         formData.append('box_threshold', boxThreshold.value);
         formData.append('text_threshold', textThreshold.value);
-        formData.append('apply_nms', applyNMS.checked);
+        formData.append('apply_nms', false);
 
         // Show loading state
         processBtn.disabled = true;
@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             // Send request
-            const response = await fetch('/process', {
+            const response = await fetch('/ask', {
                 method: 'POST',
                 body: formData
             });
@@ -228,7 +228,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // You could add a button to insert example prompts
     // This is just a helper for testing
-    window.insertExamplePrompt = function(index) {
+    window.insertExamplePrompt = function (index) {
         if (examplePrompts[index]) {
             textPrompt.value = examplePrompts[index];
         }
