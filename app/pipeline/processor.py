@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import logging
 from pathlib import Path
-
+from supervision import Detections
 from app.models.detector import GroundingDINODetector
 from app.models.segmenter import SAM2Segmenter
 from app.models.llm import LlmModel
@@ -273,9 +273,12 @@ class ReasoningImageProcessor:
         dino_prompt = parsed_query.dino_prompt
         logger.info(f"Executing DINO with prompt: '{dino_prompt}'")
 
+        # Extract class names from dino_prompt
+        classes = [cls.strip().lower() for cls in dino_prompt.split(".") if cls.strip()]
+
         detections = self.detector.detect(
             image=image_rgb,
-            text_prompt=dino_prompt,
+            classes=classes,
             box_threshold=box_threshold,
             text_threshold=text_threshold,
         )
@@ -297,20 +300,21 @@ class ReasoningImageProcessor:
         answer = self.llm.generate_answer(
             question=question,
             intent=parsed_query.intent,
-            detection_result=detection_result,
+            detections=detections,
             parsed_query=parsed_query,
+            class_names=classes,
         )
         logger.info(f"Generated answer: '{answer}'")
 
-        # Step 8: Create visualizations
+        # Step 7: Create visualizations
         annotated_image, segmented_image = self._create_visualizations(
             image_bgr=image_bgr,
             detections=detections,
             parsed_query=parsed_query,
         )
 
-        # Step 9: Save results
-        saved_paths = self._save_results(
+        # Step 8: Save results
+        self._save_results(
             image_path=image_path,
             annotated_image=annotated_image,
             segmented_image=segmented_image,
@@ -362,33 +366,34 @@ class ReasoningImageProcessor:
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         # Step 3: Detection
-        dino_prompt = parsed_query.dino_prompt
+        dino_input = parsed_query.dino_prompt
+        classes = [cls.strip().lower() for cls in dino_input.split(".") if cls.strip()]
+
         detections = self.detector.detect(
             image=image_rgb,
-            text_prompt=dino_prompt,
+            classes=classes,
             box_threshold=box_threshold,
             text_threshold=text_threshold,
         )
 
         # Step 4: NMS
-        if apply_nms and len(detections.xyxy) > 0:
-            detections = detections.with_nms(threshold=nms_threshold)
-
-        print(detections)
+        # if apply_nms and len(detections.xyxy) > 0:
+        #     detections = detections.with_nms(threshold=nms_threshold)
 
         # Step 5: Segmentation
         if len(detections.xyxy) > 0:
             detections = self.segmenter.segment(image=image_rgb, detections=detections)
 
-        # Step 6: Build result
-        detection_result = self._build_detection_result(detections, parsed_query)
+        # # Step 6: Build result
+        # detection_result = self._build_detection_result(detections, parsed_query)
 
         # Step 7: Generate answer
         answer = self.llm.generate_answer(
             question=question,
             intent=parsed_query.intent,
-            detection_result=detection_result,
+            detections=detections,
             parsed_query=parsed_query,
+            class_names=classes,
         )
 
         # Step 8: Visualize
@@ -403,15 +408,15 @@ class ReasoningImageProcessor:
             "question": question,
             "answer": answer,
             "intent": parsed_query.intent,
-            "num_detections": detection_result.count,
-            "class_names": detection_result.class_names,
+            "num_detections": len(detections.xyxy),
+            "class_names": classes,
             "annotated_image": annotated_image,
             "segmented_image": segmented_image,
         }
 
     def _build_detection_result(
         self,
-        detections: any,
+        detections: Detections,
         parsed_query: SimpleQueryResult | CompareQueryResult,
     ) -> DetectionResult:
         """
