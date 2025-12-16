@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grounding DINO + SAM2 - Detection & Segmentation</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Header -->
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">
+                <i class="fas fa-robot"></i> Grounding DINO + SAM2
+            </span>
+            <span class="text-light">
+                <small>Text-Guided Object Detection & Segmentation</small>
+            </span>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container my-5">
+        <!-- Info Card -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card border-info">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="fas fa-info-circle text-info"></i> Cómo usar
+                        </h5>
+                        <p class="card-text mb-2">
+                            Este sistema combina <strong>Grounding DINO</strong> para detección guiada por texto
+                            y <strong>SAM2</strong> para segmentación precisa.
+                        </p>
+                        <ol class="mb-0">
+                            <li>Sube una imagen</li>
+                            <li>Escribe qué objetos quieres detectar (separados por comas)</li>
+                            <li>Haz clic en "Procesar" y espera los resultados</li>
+                        </ol>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                <strong>Ejemplo de prompts:</strong>
+                                "person, car, dog" | "red apple, green apple" | "person wearing helmet, motorcycle"
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Form -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-upload"></i> Cargar Imagen y Configurar
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <!-- Image Upload -->
+                            <div class="mb-3">
+                                <label for="imageInput" class="form-label">
+                                    <i class="fas fa-image"></i> Selecciona una imagen
+                                </label>
+                                <input type="file" class="form-control" id="imageInput"
+                                       accept="image/*" required>
+                                <div class="form-text">
+                                    Formatos: JPG, PNG, BMP, WEBP (Máx. 16MB)
+                                </div>
+                            </div>
+
+                            <!-- Image Preview -->
+                            <div class="mb-3" id="previewContainer" style="display: none;">
+                                <label class="form-label">Vista previa</label>
+                                <div class="text-center">
+                                    <img id="imagePreview" class="img-thumbnail" style="max-width: 100%; max-height: 300px;">
+                                </div>
+                            </div>
+
+                            <!-- Text Prompt -->
+                            <div class="mb-3">
+                                <label for="textPrompt" class="form-label">
+                                    <i class="fas fa-keyboard"></i> ¿Qué objetos quieres detectar?
+                                </label>
+                                <input type="text" class="form-control" id="textPrompt"
+                                       placeholder="person, car, dog" required>
+                                <div class="form-text">
+                                    Escribe los objetos separados por comas
+                                </div>
+                            </div>
+
+                            <!-- Advanced Options (Collapsible) -->
+                            <div class="mb-3">
+                                <button class="btn btn-sm btn-outline-secondary" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#advancedOptions">
+                                    <i class="fas fa-cog"></i> Opciones avanzadas
+                                </button>
+                            </div>
+
+                            <div class="collapse" id="advancedOptions">
+                                <div class="card card-body mb-3">
+                                    <div class="mb-2">
+                                        <label for="boxThreshold" class="form-label">
+                                            Box Threshold: <span id="boxThresholdValue">0.35</span>
+                                        </label>
+                                        <input type="range" class="form-range" id="boxThreshold"
+                                               min="0" max="1" step="0.05" value="0.35">
+                                    </div>
+                                    <div class="mb-2">
+                                        <label for="textThreshold" class="form-label">
+                                            Text Threshold: <span id="textThresholdValue">0.25</span>
+                                        </label>
+                                        <input type="range" class="form-range" id="textThreshold"
+                                               min="0" max="1" step="0.05" value="0.25">
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="applyNMS" checked>
+                                        <label class="form-check-label" for="applyNMS">
+                                            Aplicar NMS (Non-Maximum Suppression)
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary btn-lg" id="processBtn">
+                                    <i class="fas fa-play-circle"></i> Procesar Imagen
+                                </button>
+                            </div>
+                        </form>
+
+                        <!-- Progress -->
+                        <div id="progressContainer" class="mt-3" style="display: none;">
+                            <div class="progress">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                     role="progressbar" style="width: 100%">
+                                     Procesando...
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Alert Messages -->
+                        <div id="alertContainer" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-bar"></i> Resultados
+                        </h5>
+                    </div>
+                    <div class="card-body" id="resultsContainer">
+                        <div class="text-center text-muted py-5">
+                            <i class="fas fa-image fa-3x mb-3"></i>
+                            <p>Los resultados aparecerán aquí después de procesar la imagen</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Output Images -->
+        <div class="row mt-4" id="outputImagesContainer" style="display: none;">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-warning">
+                        <h6 class="mb-0">
+                            <i class="fas fa-square"></i> Detecciones (Bounding Boxes)
+                        </h6>
+                    </div>
+                    <div class="card-body text-center">
+                        <img id="annotatedImage" class="img-fluid" style="max-width: 100%;">
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h6 class="mb-0">
+                            <i class="fas fa-puzzle-piece"></i> Segmentación (Máscaras)
+                        </h6>
+                    </div>
+                    <div class="card-body text-center">
+                        <img id="segmentedImage" class="img-fluid" style="max-width: 100%;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white text-center py-3 mt-5">
+        <p class="mb-0">
+            <small>Powered by Grounding DINO & SAM2 | Built with Flask & Bootstrap</small>
+        </p>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

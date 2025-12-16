@@ -1,0 +1,160 @@
+/* Custom styles for Grounding DINO + SAM2 Web Interface */
+
+:root {
+    --primary-color: #0d6efd;
+    --success-color: #198754;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --info-color: #0dcaf0;
+    --dark-color: #212529;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding-bottom: 60px;
+}
+
+.navbar {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card {
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+.card-header {
+    border-top-left-radius: 10px !important;
+    border-top-right-radius: 10px !important;
+    font-weight: 600;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    transition: all 0.3s;
+}
+
+.btn-primary:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.img-thumbnail {
+    border-radius: 8px;
+}
+
+#previewContainer img {
+    border: 2px dashed #667eea;
+}
+
+.progress {
+    height: 30px;
+    border-radius: 15px;
+}
+
+.progress-bar {
+    font-weight: 600;
+}
+
+footer {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+}
+
+.alert {
+    border-radius: 8px;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.detection-item {
+    padding: 8px 12px;
+    margin: 5px 0;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.detection-item:nth-child(even) {
+    background: #e9ecef;
+}
+
+.confidence-badge {
+    font-size: 0.9em;
+    padding: 4px 8px;
+}
+
+/* Loading animation */
+.spinner-border-lg {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .container {
+        padding: 0 15px;
+    }
+
+    .card {
+        margin-bottom: 20px;
+    }
+
+    footer {
+        position: relative;
+    }
+}
+
+/* Image output containers */
+#outputImagesContainer .card-body {
+    padding: 15px;
+    background: #f8f9fa;
+}
+
+#outputImagesContainer img {
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Form enhancements */
+.form-control:focus,
+.form-range:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.form-label {
+    font-weight: 600;
+    color: #495057;
+}
+
+/* Collapse animation */
+.collapse {
+    transition: all 0.3s ease;
+}
+
+/* Advanced options card */
+#advancedOptions .card {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
