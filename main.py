@@ -242,6 +242,7 @@ def ask_question():
 
         result = proc.answer_question_array(
             image=image,
+            image_path=str(filepath),
             question=question,
             box_threshold=box_threshold,
             text_threshold=text_threshold,

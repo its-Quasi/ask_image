@@ -89,7 +89,7 @@ class ImageAnnotator:
         return annotated
 
     @staticmethod
-    def create_labels(detections: Detections, class_names: list) -> list:
+    def create_labels(detections: Detections, class_names: list[str]) -> list:
         """
         Create formatted labels for detections.
 

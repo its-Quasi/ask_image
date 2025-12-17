@@ -330,6 +330,7 @@ class ReasoningImageProcessor:
     def answer_question_array(
         self,
         image: np.ndarray,
+        image_path: str,
         question: str,
         box_threshold: float = None,
         text_threshold: float = None,
@@ -400,7 +401,14 @@ class ReasoningImageProcessor:
         annotated_image, segmented_image = self._create_visualizations(
             image_bgr=image,
             detections=detections,
-            parsed_query=parsed_query,
+            class_names=classes,
+        )
+
+        # Step 9: Save results
+        self._save_results(
+            image_path=image_path,
+            annotated_image=annotated_image,
+            segmented_image=segmented_image,
         )
 
         return {
@@ -467,8 +475,8 @@ class ReasoningImageProcessor:
     def _create_visualizations(
         self,
         image_bgr: np.ndarray,
-        detections: any,
-        parsed_query: SimpleQueryResult | CompareQueryResult,
+        detections: Detections,
+        class_names: list[str],
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Create annotated and segmented visualizations.
@@ -484,14 +492,6 @@ class ReasoningImageProcessor:
         if detections is None or len(detections.xyxy) == 0:
             # No detections, return original image
             return image_bgr, image_bgr
-
-        # Extract class names for labels
-        if isinstance(parsed_query, SimpleQueryResult):
-            class_names = parsed_query.objects
-        elif isinstance(parsed_query, CompareQueryResult):
-            class_names = parsed_query.left.objects + parsed_query.right.objects
-        else:
-            class_names = ["object"]
 
         # Create labels
         labels = self.annotator.create_labels(detections, class_names)

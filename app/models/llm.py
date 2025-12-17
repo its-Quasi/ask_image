@@ -168,76 +168,93 @@ class LlmModel:
         self,
         intent: str,
         detections: Detections,
-        parsed_query: SimpleQueryResult | CompareQueryResult,
+        parsed_query,
         class_names: list[str],
     ) -> str:
         """
         Builds context string for answer generation based on intent.
-
-        Args:
-            intent: Type of query (detect, count, exists, compare_count)
-            detections: Supervision Detections object with class_id array
-            parsed_query: Parsed query from LLM
-            class_names: List of class names where index matches class_id
-                        Example: ['cat', 'chair'] means class_id 0='cat', 1='chair'
-
-        Returns:
-            Formatted context string describing what was detected
-
-        Example:
-            detections.class_id = [0, 0, 1]
-            class_names = ['cat', 'chair']
-            -> "Detected 2 cats and 1 chair"
         """
-        total_count = len(detections.xyxy) if detections is not None and len(detections.xyxy) > 0 else 0
 
-        if total_count == 0:
+        if detections is None or detections.xyxy is None or len(detections.xyxy) == 0:
             return "No objects were detected in the image."
 
-        # Map class_id to actual class names and count occurrences
         detected_objects = {}
+
         for i, class_id in enumerate(detections.class_id):
-            class_name = class_names[class_id] if class_id < len(class_names) else f"class_{class_id}"
-            confidence = detections.confidence[i] if detections.confidence is not None else 0.0
+
+            if class_id is None:
+                continue
+
+            # Ensure class_id is valid integer
+            if not isinstance(class_id, int):
+                continue
+
+            if 0 <= class_id < len(class_names):
+                class_name = class_names[class_id]
+            else:
+                class_name = "unknown"
+
+            confidence = (
+                float(detections.confidence[i])
+                if detections.confidence is not None
+                else 0.0
+            )
 
             if class_name not in detected_objects:
                 detected_objects[class_name] = {
-                    'count': 0,
-                    'confidences': []
+                    "count": 0,
+                    "confidences": [],
                 }
 
-            detected_objects[class_name]['count'] += 1
-            detected_objects[class_name]['confidences'].append(confidence)
+            detected_objects[class_name]["count"] += 1
+            detected_objects[class_name]["confidences"].append(confidence)
 
-        # Build context based on intent
-        if intent in ["detect", "count", "exists"]:
-            # Build detailed description
+        if not detected_objects:
+            return "Objects were detected, but none matched the requested classes."
+
+        total_count = sum(info["count"] for info in detected_objects.values())
+
+        # -------------------------------
+        # Intent-specific context
+        # -------------------------------
+        if intent in {"detect", "count", "exists"}:
             parts = []
             for class_name, info in detected_objects.items():
-                count = info['count']
-                avg_conf = sum(info['confidences']) / len(info['confidences']) * 100
-                parts.append(f"{count} {class_name}(s) with {avg_conf:.1f}% confidence")
+                avg_conf = sum(info["confidences"]) / len(info["confidences"]) * 100
+                parts.append(
+                    f"{info['count']} {class_name}(s) with {avg_conf:.1f}% confidence"
+                )
 
-            objects_str = ", ".join(parts)
-            return f"- Total detections: {total_count}\n- Detected: {objects_str}"
+            return (
+                f"- Total classified detections: {total_count}\n"
+                f"- Detected: {', '.join(parts)}"
+            )
 
         elif intent == "compare_count":
-            # For comparison queries, provide counts per class
             left_objects = parsed_query.left.objects
             right_objects = parsed_query.right.objects
 
-            left_count = sum(detected_objects.get(obj, {}).get('count', 0) for obj in left_objects)
-            right_count = sum(detected_objects.get(obj, {}).get('count', 0) for obj in right_objects)
+            left_count = sum(
+                detected_objects.get(obj, {}).get("count", 0)
+                for obj in left_objects
+            )
+            right_count = sum(
+                detected_objects.get(obj, {}).get("count", 0)
+                for obj in right_objects
+            )
 
-            left_str = ", ".join(left_objects)
-            right_str = ", ".join(right_objects)
-
-            return f"- {left_str}: {left_count} detected\n- {right_str}: {right_count} detected\n- Comparison: {left_count} vs {right_count}"
+            return (
+                f"- {', '.join(left_objects)}: {left_count} detected\n"
+                f"- {', '.join(right_objects)}: {right_count} detected\n"
+                f"- Comparison: {left_count} vs {right_count}"
+            )
 
         else:
-            # Generic fallback
-            parts = [f"{count} {name}(s)" for name, info in detected_objects.items() for count in [info['count']]]
-            return f"- Total detections: {total_count}\n- Found: {', '.join(parts)}"
+            summary = ", ".join(
+                f"{info['count']} {name}(s)"
+                for name, info in detected_objects.items()
+            )
+            return f"- Total detections: {total_count}\n- Found: {summary}"
 
     def _generate_fallback_answer(
         self, intent: str, detection_result: DetectionResult
