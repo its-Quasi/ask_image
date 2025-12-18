@@ -9,6 +9,7 @@ from typing import Dict, Any
 from ollama import Client
 from pydantic import ValidationError
 from supervision import Detections
+import numbers
 
 from app.core.config import SYSTEM_PROMPT, MODEL
 from app.models.schemas import DetectionResult, CompareQueryResult, SimpleQueryResult
@@ -186,7 +187,7 @@ class LlmModel:
                 continue
 
             # Ensure class_id is valid integer
-            if not isinstance(class_id, int):
+            if not isinstance(class_id, numbers.Integral):
                 continue
 
             if 0 <= class_id < len(class_names):
