@@ -7,7 +7,7 @@ Compatible with supervision>=0.27.0
 import numpy as np
 import torch
 from PIL import Image
-from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection, GroundingDinoProcessor
+from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 from supervision import Detections
 
 from app.core.config import (
@@ -48,12 +48,9 @@ class GroundingDINODetector:
 
         # Load processor and model from HuggingFace
         print(f"Loading Grounding DINO from Transformers: {model_id}")
-        self.processor: GroundingDinoProcessor = AutoProcessor.from_pretrained(model_id)
+        self.processor = AutoProcessor.from_pretrained(model_id)
         self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id)
-
-        # # Move model to device
-        # self.model.to(self.device)
-        # self.model.eval()
+        print(f"Finish Loading Grounding DINO from Transformers: {model_id}")
 
     def detect(
         self,
@@ -156,17 +153,10 @@ class GroundingDINODetector:
             text_threshold=text_threshold,
         )
 
-        # results = processor.post_process_grounded_object_detection(
-        #     outputs,
-        #     inputs.input_ids,
-        #     box_threshold=0.4,
-        #     text_threshold=0.3,
-        #     target_sizes=[image.size[::-1]],
-        # )
+        zero_pos_result = results[0]
 
-        print(results)
         # Convert to supervision Detections format
-        detections = self._to_supervision_detections(results)
+        detections = self._to_supervision_detections(zero_pos_result)
 
         return detections
 
@@ -200,19 +190,10 @@ class GroundingDINODetector:
         label_to_id = {label: idx for idx, label in enumerate(unique_labels)}
         class_ids = np.array([label_to_id[label] for label in labels])
 
-        # Create supervision Detections object
-        # supervision.Detections expects:
-        # - xyxy: bounding boxes
-        # - confidence: scores
-        # - class_id: class identifiers
-        # - data: optional dict with additional info
         detections = Detections(
             xyxy=boxes,
             confidence=scores,
             class_id=class_ids,
-            data={
-                "class_name": np.array(labels),  # Store text labels
-            },
         )
 
         return detections

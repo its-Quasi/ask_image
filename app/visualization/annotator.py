@@ -19,9 +19,7 @@ class ImageAnnotator:
         """Initialize annotators."""
         self.box_annotator = sv.BoxAnnotator()
         self.mask_annotator = sv.MaskAnnotator()
-
-    def upload_classes(prompt):
-        pass
+        self.label_annotator = sv.LabelAnnotator()
 
     def annotate_boxes(
         self,
@@ -45,7 +43,11 @@ class ImageAnnotator:
             return image
 
         annotated = self.box_annotator.annotate(
-            scene=image.copy(), detections=detections, labels=labels
+            scene=image.copy(), detections=detections
+        )
+
+        annotated = self.label_annotator.annotate(
+            scene=annotated, detections=detections, labels=labels
         )
 
         return annotated
@@ -77,12 +79,22 @@ class ImageAnnotator:
         annotated = image.copy()
 
         # Draw masks first
+
+        mask_detections = Detections(
+            xyxy=detections.xyxy,
+            mask=np.array(detections.mask).astype(bool),
+            class_id=detections.class_id,
+            confidence=detections.confidence,
+        )
+
         annotated = self.mask_annotator.annotate(
-            scene=annotated, detections=detections
+            scene=annotated, detections=mask_detections
         )
 
         # Then draw boxes on top
-        annotated = self.box_annotator.annotate(
+        annotated = self.box_annotator.annotate(scene=annotated, detections=detections)
+
+        annotated = self.label_annotator.annotate(
             scene=annotated, detections=detections, labels=labels
         )
 
