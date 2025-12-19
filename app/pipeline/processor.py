@@ -15,7 +15,6 @@ from app.models.schemas import (
     SimpleQueryResult,
     CompareQueryResult,
     DetectionResult,
-    AnswerResponse,
 )
 from app.visualization.annotator import ImageAnnotator
 from app.core.config import NMS_THRESHOLD, ANNOTATED_DIR, SEGMENTED_DIR
@@ -41,105 +40,6 @@ class ImageProcessor:
         self.segmenter = SAM2Segmenter()
         self.annotator = ImageAnnotator()
 
-    def process_image(
-        self,
-        image_path: str,
-        text_prompt: str,
-        box_threshold: float = None,
-        text_threshold: float = None,
-        apply_nms: bool = True,
-        nms_threshold: float = NMS_THRESHOLD,
-    ) -> dict:
-        """
-        Process a single image through the complete pipeline.
-
-        Args:
-            image_path: Path to input image
-            text_prompt: Text description of objects to detect
-            box_threshold: Detection confidence threshold
-            text_threshold: Text matching threshold
-            apply_nms: Whether to apply Non-Maximum Suppression
-            nms_threshold: IoU threshold for NMS
-
-        Returns:
-            Dictionary containing:
-                - detections: Detections object
-                - annotated_path: Path to saved annotated image
-                - segmented_path: Path to saved segmented image
-                - class_names: List of detected class names
-                - num_detections: Number of objects detected
-        """
-        # Load image
-        image_bgr = cv2.imread(str(image_path))
-        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-
-        # Parse class names from prompt
-        class_names = [cls.strip() for cls in text_prompt.split(",")]
-
-        # Step 1: Detection with Grounding DINO
-        detections = self.detector.detect(
-            image=image_rgb,
-            text_prompt=text_prompt,
-            box_threshold=box_threshold,
-            text_threshold=text_threshold,
-        )
-
-        # Check if any objects were detected
-        if len(detections.xyxy) == 0:
-            return {
-                "detections": detections,
-                "annotated_path": None,
-                "segmented_path": None,
-                "class_names": class_names,
-                "num_detections": 0,
-                "message": "No objects detected",
-            }
-
-        # Step 2: Apply NMS to reduce overlapping boxes
-        if apply_nms and len(detections.xyxy) > 0:
-            detections = detections.with_nms(threshold=nms_threshold)
-
-        # Step 3: Segmentation with SAM2
-        detections = self.segmenter.segment(
-            image=image_rgb,
-            detections=detections,
-        )
-
-        # Step 4: Create labels
-        labels = self.annotator.create_labels(detections, class_names)
-
-        # Step 5: Generate visualizations
-        # Annotated image (boxes only)
-        annotated_image = self.annotator.annotate_boxes(
-            image=image_bgr,
-            detections=detections,
-            labels=labels,
-        )
-
-        # Segmented image (masks + boxes)
-        segmented_image = self.annotator.annotate_masks(
-            image=image_bgr,
-            detections=detections,
-            labels=labels,
-        )
-
-        # Step 6: Save results
-        image_name = Path(image_path).name
-        annotated_path = ANNOTATED_DIR / image_name
-        segmented_path = SEGMENTED_DIR / image_name
-
-        cv2.imwrite(str(annotated_path), annotated_image)
-        cv2.imwrite(str(segmented_path), segmented_image)
-
-        return {
-            "detections": detections,
-            "annotated_path": str(annotated_path),
-            "segmented_path": str(segmented_path),
-            "class_names": class_names,
-            "num_detections": len(detections.xyxy),
-            "message": "Success",
-        }
-
     def process_image_array(
         self,
         image: np.ndarray,
@@ -164,12 +64,11 @@ class ImageProcessor:
             Dictionary with processing results including annotated and segmented images
         """
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        class_names = [cls.strip() for cls in text_prompt.split(",")]
-
+        class_names = [cls.strip() for cls in text_prompt.split(".") if cls.strip()]
         # Detection
         detections = self.detector.detect(
             image=image_rgb,
-            text_prompt=text_prompt,
+            classes_prompt=text_prompt,
             box_threshold=box_threshold,
             text_threshold=text_threshold,
         )
@@ -196,11 +95,20 @@ class ImageProcessor:
         annotated_image = self.annotator.annotate_boxes(image, detections, labels)
         segmented_image = self.annotator.annotate_masks(image, detections, labels)
 
+        # Get only classes detected
+        detected_classes = [
+            class_names[class_id]
+            # get unique class_id
+            for _, class_id in enumerate(list(set(detections.class_id)))
+            if class_id is not None and 0 <= class_id < len(class_names)
+        ]
+
         return {
             "detections": detections,
             "annotated_image": annotated_image,
             "segmented_image": segmented_image,
             "class_names": class_names,
+            "detected_classes": detected_classes,
             "num_detections": len(detections.xyxy),
             "message": "Success",
         }
@@ -226,107 +134,6 @@ class ReasoningImageProcessor:
         self.annotator = ImageAnnotator()
         logger.info("ReasoningImageProcessor initialized")
 
-    def answer_question(
-        self,
-        image_path: str,
-        question: str,
-        box_threshold: float = None,
-        text_threshold: float = None,
-        apply_nms: bool = True,
-        nms_threshold: float = NMS_THRESHOLD,
-    ) -> AnswerResponse:
-        """
-        Process a natural language question about an image.
-
-        Args:
-            image_path: Path to input image
-            question: Natural language question (e.g., "How many red cars?")
-            box_threshold: Detection confidence threshold
-            text_threshold: Text matching threshold
-            apply_nms: Whether to apply Non-Maximum Suppression
-            nms_threshold: IoU threshold for NMS
-
-        Returns:
-            AnswerResponse with question, natural language answer, and detection details
-
-        Raises:
-            ValueError: If question cannot be parsed or image cannot be loaded
-        """
-        logger.info(f"Processing question: '{question}' for image: {image_path}")
-
-        # Step 1: Parse question with LLM
-        try:
-            parsed_query = self.llm.parse_query(question)
-            logger.debug(f"Parsed query: {parsed_query}")
-        except ValueError as e:
-            logger.error(f"Failed to parse question: {e}")
-            raise ValueError(f"Could not understand question: {e}")
-
-        # Step 2: Load image
-        image_bgr = cv2.imread(str(image_path))
-        if image_bgr is None:
-            raise ValueError(f"Could not load image from: {image_path}")
-
-        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-
-        # Step 3: Execute detection with DINO using generated prompt
-        dino_prompt = parsed_query.dino_prompt
-        logger.info(f"Executing DINO with prompt: '{dino_prompt}'")
-
-        # Extract class names from dino_prompt
-        classes = [cls.strip().lower() for cls in dino_prompt.split(".") if cls.strip()]
-
-        detections = self.detector.detect(
-            image=image_rgb,
-            classes=classes,
-            box_threshold=box_threshold,
-            text_threshold=text_threshold,
-        )
-
-        # Step 4: Apply NMS if requested
-        if apply_nms and len(detections.xyxy) > 0:
-            detections = detections.with_nms(threshold=nms_threshold)
-            logger.debug(f"Applied NMS, remaining detections: {len(detections.xyxy)}")
-
-        # Step 5: Segmentation with SAM2
-        if len(detections.xyxy) > 0:
-            detections = self.segmenter.segment(image=image_rgb, detections=detections)
-            logger.debug("Segmentation complete")
-
-        # Step 6: Build detection result
-        detection_result = self._build_detection_result(detections, parsed_query)
-
-        # Step 7: Generate natural language answer
-        answer = self.llm.generate_answer(
-            question=question,
-            intent=parsed_query.intent,
-            detections=detections,
-            parsed_query=parsed_query,
-            class_names=classes,
-        )
-        logger.info(f"Generated answer: '{answer}'")
-
-        # Step 7: Create visualizations
-        annotated_image, segmented_image = self._create_visualizations(
-            image_bgr=image_bgr,
-            detections=detections,
-            parsed_query=parsed_query,
-        )
-
-        # Step 8: Save results
-        self._save_results(
-            image_path=image_path,
-            annotated_image=annotated_image,
-            segmented_image=segmented_image,
-        )
-
-        return AnswerResponse(
-            question=question,
-            answer=answer,
-            detections=detection_result,
-            intent=parsed_query.intent,
-        )
-
     def answer_question_array(
         self,
         image: np.ndarray,
@@ -335,7 +142,7 @@ class ReasoningImageProcessor:
         box_threshold: float = None,
         text_threshold: float = None,
         apply_nms: bool = True,
-        nms_threshold: float = NMS_THRESHOLD,
+        nms_threshold: float = None,
     ) -> dict[str, any]:
         """
         Process a natural language question about an image array (for web interface).
@@ -346,11 +153,15 @@ class ReasoningImageProcessor:
             box_threshold: Detection confidence threshold
             text_threshold: Text matching threshold
             apply_nms: Whether to apply NMS
-            nms_threshold: IoU threshold for NMS
+            nms_threshold: IoU threshold for NMS (defaults to NMS_THRESHOLD from config)
 
         Returns:
             Dictionary with answer, images, and detection details
         """
+        # Use default NMS threshold if not provided
+        if nms_threshold is None:
+            nms_threshold = NMS_THRESHOLD
+
         logger.info(f"Processing question (array mode): '{question}'")
 
         # Step 1: Parse question
@@ -372,7 +183,7 @@ class ReasoningImageProcessor:
 
         detections = self.detector.detect(
             image=image_rgb,
-            classes=classes,
+            classes_prompt=dino_input,
             box_threshold=box_threshold,
             text_threshold=text_threshold,
         )

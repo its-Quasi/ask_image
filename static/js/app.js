@@ -6,7 +6,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const imageInput = document.getElementById('imageInput');
     const imagePreview = document.getElementById('imagePreview');
     const previewContainer = document.getElementById('previewContainer');
-    const textPrompt = document.getElementById('textPrompt');
     const processBtn = document.getElementById('processBtn');
     const progressContainer = document.getElementById('progressContainer');
     const alertContainer = document.getElementById('alertContainer');
@@ -15,12 +14,28 @@ document.addEventListener('DOMContentLoaded', function () {
     const annotatedImage = document.getElementById('annotatedImage');
     const segmentedImage = document.getElementById('segmentedImage');
 
+    // Input mode elements
+    const modeClasses = document.getElementById('modeClasses');
+    const modeQuestion = document.getElementById('modeQuestion');
+    const classesContainer = document.getElementById('classesContainer');
+    const questionContainer = document.getElementById('questionContainer');
+    const classInput = document.getElementById('classInput');
+    const addClassBtn = document.getElementById('addClassBtn');
+    const classTags = document.getElementById('classTags');
+    const questionInput = document.getElementById('questionInput');
+
     // Threshold sliders
     const boxThreshold = document.getElementById('boxThreshold');
     const textThreshold = document.getElementById('textThreshold');
+    const nmsThreshold = document.getElementById('nmsThreshold');
     const boxThresholdValue = document.getElementById('boxThresholdValue');
     const textThresholdValue = document.getElementById('textThresholdValue');
+    const nmsThresholdValue = document.getElementById('nmsThresholdValue');
     const applyNMS = document.getElementById('applyNMS');
+
+    // State
+    let classes = [];
+    let currentMode = 'classes';
 
     // Update threshold display values
     boxThreshold.addEventListener('input', function () {
@@ -30,6 +45,71 @@ document.addEventListener('DOMContentLoaded', function () {
     textThreshold.addEventListener('input', function () {
         textThresholdValue.textContent = this.value;
     });
+
+    nmsThreshold.addEventListener('input', function () {
+        nmsThresholdValue.textContent = this.value;
+    });
+
+    // Mode switching
+    modeClasses.addEventListener('change', function () {
+        if (this.checked) {
+            currentMode = 'classes';
+            classesContainer.style.display = 'block';
+            questionContainer.style.display = 'none';
+        }
+    });
+
+    modeQuestion.addEventListener('change', function () {
+        if (this.checked) {
+            currentMode = 'question';
+            classesContainer.style.display = 'none';
+            questionContainer.style.display = 'block';
+        }
+    });
+
+    // Add class functionality
+    function addClass() {
+        const value = classInput.value.trim();
+        if (value && !classes.includes(value.toLowerCase())) {
+            classes.push(value.toLowerCase());
+            renderTags();
+            classInput.value = '';
+        }
+    }
+
+    addClassBtn.addEventListener('click', addClass);
+
+    classInput.addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addClass();
+        }
+    });
+
+    // Render tags
+    function renderTags() {
+        classTags.innerHTML = '';
+        classes.forEach((className, index) => {
+            const tag = document.createElement('div');
+            tag.className = 'class-tag';
+            tag.innerHTML = `
+                <span>${className}</span>
+                <span class="remove-tag" data-index="${index}">
+                    <i class="fas fa-times"></i>
+                </span>
+            `;
+            classTags.appendChild(tag);
+        });
+
+        // Add click handlers for remove buttons
+        document.querySelectorAll('.remove-tag').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const index = parseInt(this.getAttribute('data-index'));
+                classes.splice(index, 1);
+                renderTags();
+            });
+        });
+    }
 
     // Image preview on file selection
     imageInput.addEventListener('change', function (e) {
@@ -72,18 +152,32 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        if (!textPrompt.value.trim()) {
-            showAlert('Por favor ingresa un prompt de texto.', 'warning');
+        // Validate based on mode
+        if (currentMode === 'classes' && classes.length === 0) {
+            showAlert('Por favor agrega al menos una clase para detectar.', 'warning');
+            return;
+        }
+
+        if (currentMode === 'question' && !questionInput.value.trim()) {
+            showAlert('Por favor escribe una pregunta.', 'warning');
             return;
         }
 
         // Prepare form data
         const formData = new FormData();
         formData.append('image', imageInput.files[0]);
-        formData.append('question', textPrompt.value.trim());
+        formData.append('mode', currentMode);
+
+        if (currentMode === 'classes') {
+            formData.append('classes', JSON.stringify(classes));
+        } else {
+            formData.append('question', questionInput.value.trim());
+        }
+
         formData.append('box_threshold', boxThreshold.value);
         formData.append('text_threshold', textThreshold.value);
         formData.append('apply_nms', applyNMS.checked);
+        formData.append('nms_threshold', nmsThreshold.value);
 
         // Show loading state
         processBtn.disabled = true;
@@ -105,14 +199,13 @@ document.addEventListener('DOMContentLoaded', function () {
             processBtn.disabled = false;
 
             if (result.success) {
-                window.alert(result.answer)
                 if (result.num_detections === 0) {
                     // No detections found
-                    showAlert(result.message, 'info');
+                    showAlert(result.message || result.answer || 'No se detectaron objetos.', 'info');
                     showNoDetectionsResults();
                 } else {
                     // Success with detections
-                    showAlert(result.message, 'success');
+                    showAlert(result.message || 'Procesamiento completado exitosamente.', 'success');
                     displayResults(result);
                 }
             } else {
@@ -152,20 +245,13 @@ document.addEventListener('DOMContentLoaded', function () {
         `;
         }
 
-        if (result.detections && result.detections.length > 0) {
-            html += '<div class="mt-3"><h6>Detecciones:</h6>';
-            result.detections.forEach(detection => {
-                html += `
-                    <div class="detection-item">
-                        <span class="fw-bold">#${detection.id}</span>
-                        <span class="text-capitalize">${detection.class}</span>
-                        <span class="badge bg-primary confidence-badge float-end">
-                            ${detection.confidence}
-                        </span>
-                    </div>
-                `;
+        if (result.detected_classes && result.detected_classes.length > 0) {
+            html += '<div class="mt-3"><h6>Clases detectadas:</h6>';
+            html += '<div class="d-flex flex-wrap gap-2">';
+            result.detected_classes.forEach(className => {
+                html += `<span class="badge bg-primary">${className}</span>`;
             });
-            html += '</div>';
+            html += '</div></div>';
         }
 
         resultsContainer.innerHTML = html;
@@ -228,21 +314,4 @@ document.addEventListener('DOMContentLoaded', function () {
         };
         return icons[type] || 'info-circle';
     }
-
-    // Example prompts (optional feature)
-    const examplePrompts = [
-        'person, car, dog',
-        'cat, dog',
-        'person wearing helmet, motorcycle',
-        'red apple, green apple',
-        'bottle, cup, laptop'
-    ];
-
-    // You could add a button to insert example prompts
-    // This is just a helper for testing
-    window.insertExamplePrompt = function (index) {
-        if (examplePrompts[index]) {
-            textPrompt.value = examplePrompts[index];
-        }
-    };
 });

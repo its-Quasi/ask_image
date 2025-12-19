@@ -282,3 +282,195 @@ class LlmModel:
             return f"I detected {count} object(s): {classes}."
         else:
             return f"Detection complete. Found {count} object(s)."
+
+    def analyze_classes(self, classes: list[str]) -> dict[str, any]:
+        """
+        Validates and normalizes class names for object detection.
+
+        Args:
+            classes: List of class names (can be in Spanish or English)
+
+        Returns:
+            Dictionary with:
+                - success: Boolean indicating if validation was successful
+                - dino_prompt: Formatted string for DINO (e.g., "cat. dog. person.")
+                - normalized_classes: List of normalized class names in English
+                - error: Error message if validation failed
+        """
+        if not classes or len(classes) == 0:
+            return {
+                "success": False,
+                "error": "No se proporcionaron clases para validar",
+                "dino_prompt": "",
+                "normalized_classes": []
+            }
+
+        # Create prompt for LLM to validate and normalize classes
+        validation_prompt = f"""
+        You are a class name validator and normalizer for an object detection system.
+
+        Task: Validate and normalize the following class names to English.
+
+        Input classes: {', '.join(classes)}
+
+        Rules:
+        1. Translate Spanish class names to English
+        2. Normalize to lowercase
+        3. Use singular form when appropriate for object detection (e.g., "cat" not "cats")
+        4. Discard nonsensical or invalid class names
+        5. Keep only valid object/animal/thing names that can be detected in images
+
+        Output ONLY valid JSON (no markdown, no explanation):
+        {{
+            "valid": true/false,
+            "normalized_classes": [list of valid English class names],
+            "discarded": [list of invalid/nonsensical class names that were removed],
+            "reason": "explanation if any classes were discarded or if validation failed"
+        }}
+
+        Examples:
+        Input: ["gato", "perro", "persona"]
+        Output: {{"valid": true, "normalized_classes": ["cat", "dog", "person"], "discarded": [], "reason": ""}}
+
+        Input: ["asdfgh", "cat", "xyzabc"]
+        Output: {{"valid": true, "normalized_classes": ["cat"], "discarded": ["asdfgh", "xyzabc"], "reason": "Removed nonsensical class names"}}
+
+        Input: ["qwerty", "zxcvbn"]
+        Output: {{"valid": false, "normalized_classes": [], "discarded": ["qwerty", "zxcvbn"], "reason": "All class names are invalid or nonsensical"}}
+        """
+
+        try:
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that validates and normalizes class names for object detection."
+                },
+                {"role": "user", "content": validation_prompt}
+            ]
+
+            response = self.client.chat(model=self.model, messages=messages)
+            content = response["message"]["content"]
+            logger.debug(f"Class validation LLM response: {content}")
+
+            # Parse JSON from response
+            parsed_json = self._extract_json(content)
+
+            # Check if validation was successful
+            if not parsed_json.get("valid", False):
+                return {
+                    "success": False,
+                    "error": parsed_json.get("reason", "Las clases proporcionadas no son válidas"),
+                    "dino_prompt": "",
+                    "normalized_classes": []
+                }
+
+            normalized_classes = parsed_json.get("normalized_classes", [])
+
+            if len(normalized_classes) == 0:
+                return {
+                    "success": False,
+                    "error": "No se encontraron clases válidas después de la normalización",
+                    "dino_prompt": "",
+                    "normalized_classes": []
+                }
+
+            # Format as DINO prompt: "class1. class2. class3."
+            dino_prompt = ". ".join(normalized_classes) + "."
+
+            logger.info(f"Normalized classes: {normalized_classes} -> DINO prompt: '{dino_prompt}'")
+
+            return {
+                "success": True,
+                "dino_prompt": dino_prompt,
+                "normalized_classes": normalized_classes,
+                "discarded": parsed_json.get("discarded", []),
+                "reason": parsed_json.get("reason", "")
+            }
+
+        except Exception as e:
+            logger.error(f"Error validating classes: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Error al validar clases: {str(e)}",
+                "dino_prompt": "",
+                "normalized_classes": []
+            }
+
+    def validate_question(self, question: str) -> dict[str, any]:
+        """
+        Validates if a question makes sense for image analysis.
+
+        Args:
+            question: Natural language question from user
+
+        Returns:
+            Dictionary with:
+                - valid: Boolean indicating if question is valid
+                - error: Error message if question is invalid
+        """
+        if not question or len(question.strip()) == 0:
+            return {
+                "valid": False,
+                "error": "La pregunta no puede estar vacía"
+            }
+
+        validation_prompt = f"""
+        Determine if the following question makes sense for analyzing an image.
+
+        Question: "{question}"
+
+        A valid question should:
+        - Ask about objects, people, animals, or things that can be visually detected
+        - Ask about quantities, existence, comparisons, or attributes
+        - Be related to visual content in an image
+
+        Invalid questions:
+        - Questions about audio, smell, taste, or other non-visual properties
+        - Questions about abstract concepts that cannot be seen
+        - Nonsensical or gibberish text
+        - Questions unrelated to image content
+
+        Output ONLY valid JSON (no markdown):
+        {{
+            "valid": true/false,
+            "reason": "brief explanation why the question is valid or invalid"
+        }}
+        """
+
+        try:
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a validator for image analysis questions."
+                },
+                {"role": "user", "content": validation_prompt}
+            ]
+
+            response = self.client.chat(model=self.model, messages=messages)
+            content = response["message"]["content"]
+            logger.debug(f"Question validation LLM response: {content}")
+
+            parsed_json = self._extract_json(content)
+
+            is_valid = parsed_json.get("valid", False)
+            reason = parsed_json.get("reason", "")
+
+            if not is_valid:
+                return {
+                    "valid": False,
+                    "error": f"La pregunta no es válida para análisis de imágenes: {reason}"
+                }
+
+            return {
+                "valid": True,
+                "error": ""
+            }
+
+        except Exception as e:
+            logger.error(f"Error validating question: {str(e)}")
+            # If validation fails, assume question is valid to avoid blocking
+            logger.warning("Question validation failed, assuming question is valid")
+            return {
+                "valid": True,
+                "error": ""
+            }

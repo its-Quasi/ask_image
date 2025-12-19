@@ -88,15 +88,51 @@
                                 </div>
                             </div>
 
-                            <!-- Text Prompt -->
+                            <!-- Input Mode Selection -->
                             <div class="mb-3">
-                                <label for="textPrompt" class="form-label">
-                                    <i class="fas fa-keyboard"></i> ¿Qué objetos quieres detectar?
+                                <label class="form-label">
+                                    <i class="fas fa-toggle-on"></i> Modo de entrada
                                 </label>
-                                <input type="text" class="form-control" id="textPrompt"
-                                       placeholder="person, car, dog" required>
+                                <div class="btn-group w-100" role="group">
+                                    <input type="radio" class="btn-check" name="inputMode" id="modeClasses" value="classes" checked>
+                                    <label class="btn btn-outline-primary" for="modeClasses">
+                                        <i class="fas fa-tags"></i> Clases
+                                    </label>
+                                    <input type="radio" class="btn-check" name="inputMode" id="modeQuestion" value="question">
+                                    <label class="btn btn-outline-primary" for="modeQuestion">
+                                        <i class="fas fa-question-circle"></i> Preguntas
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Classes Mode (Tags) -->
+                            <div class="mb-3" id="classesContainer">
+                                <label for="classInput" class="form-label">
+                                    <i class="fas fa-tags"></i> Agregar clases para detectar
+                                </label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="classInput"
+                                           placeholder="Escribe una clase y presiona Enter (ej: cat, dog, person)">
+                                    <button class="btn btn-outline-secondary" type="button" id="addClassBtn">
+                                        <i class="fas fa-plus"></i> Agregar
+                                    </button>
+                                </div>
                                 <div class="form-text">
-                                    Escribe los objetos separados por comas
+                                    Presiona Enter o haz clic en Agregar para añadir la clase
+                                </div>
+                                <!-- Tags container -->
+                                <div id="classTags" class="mt-2 d-flex flex-wrap gap-2"></div>
+                            </div>
+
+                            <!-- Question Mode -->
+                            <div class="mb-3" id="questionContainer" style="display: none;">
+                                <label for="questionInput" class="form-label">
+                                    <i class="fas fa-question-circle"></i> Haz una pregunta sobre la imagen
+                                </label>
+                                <input type="text" class="form-control" id="questionInput"
+                                       placeholder="¿Cuántos gatos hay? ¿Hay más gatos que perros?">
+                                <div class="form-text">
+                                    Ejemplo: "¿Cuántos gatos hay?", "¿Hay alguna persona dentro de un carro?"
                                 </div>
                             </div>
 
@@ -124,11 +160,19 @@
                                         <input type="range" class="form-range" id="textThreshold"
                                                min="0" max="1" step="0.05" value="0.25">
                                     </div>
-                                    <div class="form-check">
+                                    <div class="form-check mb-2">
                                         <input class="form-check-input" type="checkbox" id="applyNMS" checked>
                                         <label class="form-check-label" for="applyNMS">
                                             Aplicar NMS (Non-Maximum Suppression)
                                         </label>
+                                    </div>
+                                    <div class="mb-2" id="nmsThresholdContainer">
+                                        <label for="nmsThreshold" class="form-label">
+                                            NMS Threshold: <span id="nmsThresholdValue">0.45</span>
+                                        </label>
+                                        <input type="range" class="form-range" id="nmsThreshold"
+                                               min="0" max="1" step="0.05" value="0.45">
+                                        <small class="text-muted">Ajusta el umbral de solapamiento para NMS</small>
                                     </div>
                                 </div>
                             </div>

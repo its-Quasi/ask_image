@@ -81,19 +81,19 @@ Output schemas:
 1) detect / count / exists
 {
   "intent": "detect | count | exists",
-  "dino_prompt": "descriptive phrase for detection ending with space and period",
+  "dino_prompt": "descriptive phrase for detection ending with period",
   "objects": [string],
   "attributes": {
     "color": [string] | null
   }
 }
 
-Example: "How many red cars?" -> {"intent": "count", "dino_prompt": "red car .", "objects": ["car"], "attributes": {"color": ["red"]}}
+Example: "How many red cars?" -> {"intent": "count", "dino_prompt": "red car. cat.", "objects": ["car", "cat"], "attributes": {"color": ["red"]}}
 
 2) compare_count
 {
   "intent": "compare_count",
-  "dino_prompt": "phrase1 . phrase2 .",
+  "dino_prompt": "phrase1. phrase2.",
   "left": {
     "objects": [string],
     "attributes": {
@@ -109,7 +109,7 @@ Example: "How many red cars?" -> {"intent": "count", "dino_prompt": "red car .",
   "operator": ">" | "<" | "=="
 }
 
-Example: "Are there more red cars than blue bikes?" -> {"intent": "compare_count", "dino_prompt": "red car . blue bike .", "left": {"objects": ["car"], "attributes": {"color": ["red"]}}, "right": {"objects": ["bike"], "attributes": {"color": ["blue"]}}, "operator": ">"}
+Example: "Are there more red cars than blue bikes?" -> {"intent": "compare_count", "dino_prompt": "red car. blue bike.", "left": {"objects": ["car"], "attributes": {"color": ["red"]}}, "right": {"objects": ["bike"], "attributes": {"color": ["blue"]}}, "operator": ">"}
 
 IMPORTANT: The dino_prompt must be a phrase optimized for Grounding DINO:
 - Combine attributes + object: "red car", "scratched blue vehicle"

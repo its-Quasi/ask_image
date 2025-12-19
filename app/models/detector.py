@@ -55,8 +55,7 @@ class GroundingDINODetector:
     def detect(
         self,
         image: np.ndarray,
-        classes: list[str] | str = None,
-        text_prompt: str = None,
+        classes_prompt: str = None,
         box_threshold: float = BOX_THRESHOLD,
         text_threshold: float = TEXT_THRESHOLD,
     ) -> Detections:
@@ -73,21 +72,10 @@ class GroundingDINODetector:
         Returns:
             Detections object containing bounding boxes, confidence scores, and class IDs
         """
-        # Support both 'classes' and 'text_prompt' parameters for compatibility
-        if text_prompt is not None:
-            prompt = text_prompt
-        elif classes is not None:
-            # Convert classes to text prompt
-            if isinstance(classes, list):
-                # Handle list format: ["person", "car"] or ["person.", "car."]
-                prompt = ". ".join([cls.strip().rstrip(".") for cls in classes]) + "."
-            else:
-                # Handle string format
-                prompt = classes
-        else:
-            raise ValueError("Either 'classes' or 'text_prompt' must be provided")
+        if classes_prompt is None:
+            raise ValueError("'classes' must be provided")
 
-        return self._run_inference(image, prompt, box_threshold, text_threshold)
+        return self._run_inference(image, classes_prompt, box_threshold, text_threshold)
 
     def detect_with_caption(
         self,
@@ -156,11 +144,11 @@ class GroundingDINODetector:
         zero_pos_result = results[0]
 
         # Convert to supervision Detections format
-        detections = self._to_supervision_detections(zero_pos_result)
+        detections = self._to_supervision_detections(zero_pos_result, text)
 
         return detections
 
-    def _to_supervision_detections(self, results: dict) -> Detections:
+    def _to_supervision_detections(self, results: dict, text: str) -> Detections:
         """
         Convert Transformers output to supervision.Detections format.
 
@@ -185,10 +173,10 @@ class GroundingDINODetector:
                 labels = labels.cpu().numpy()
 
         # Create class_id array
-        # Map each unique label to an integer ID
-        unique_labels = list(set(labels))
-        label_to_id = {label: idx for idx, label in enumerate(unique_labels)}
-        class_ids = np.array([label_to_id[label] for label in labels])
+
+        classes = [cls.strip() for cls in text.split(".") if cls.strip()]
+        classes_to_id = {cls: idx for idx, cls in enumerate(classes)}
+        class_ids = np.array([classes_to_id[label] for label in labels])
 
         detections = Detections(
             xyxy=boxes,

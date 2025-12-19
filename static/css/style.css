@@ -158,3 +158,57 @@ footer {
     background: #f8f9fa;
     border: 1px solid #dee2e6;
 }
+
+/* Class tags styles */
+.class-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    animation: tagSlideIn 0.3s ease-out;
+}
+
+.class-tag:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+.class-tag .remove-tag {
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.class-tag .remove-tag:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+@keyframes tagSlideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+#classTags:empty::before {
+    content: "No hay clases agregadas aún";
+    color: #6c757d;
+    font-size: 0.9rem;
+    font-style: italic;
+}
