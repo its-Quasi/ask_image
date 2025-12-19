@@ -8,7 +8,7 @@ import numpy as np
 import logging
 from pathlib import Path
 from supervision import Detections
-from app.models.detector import GroundingDINODetector
+from app.models.detector_t import GroundingDINODetector
 from app.models.segmenter import SAM2Segmenter
 from app.models.llm import LlmModel
 from app.models.schemas import (
