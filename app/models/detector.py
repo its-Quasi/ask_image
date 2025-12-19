@@ -1,17 +1,17 @@
 """
-Grounding DINO detection module.
+Grounding DINO detection module using HuggingFace Transformers.
 Handles text-guided object detection using open-vocabulary prompts.
+Compatible with supervision>=0.27.0
 """
 
 import numpy as np
 import torch
-from groundingdino.util.inference import Model
+from PIL import Image
+from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 from supervision import Detections
 
 from app.core.config import (
     DEVICE,
-    GROUNDING_DINO_CONFIG,
-    GROUNDING_DINO_CHECKPOINT,
     BOX_THRESHOLD,
     TEXT_THRESHOLD,
 )
@@ -19,44 +19,44 @@ from app.core.config import (
 
 class GroundingDINODetector:
     """
-    Wrapper for Grounding DINO model that performs text-guided object detection.
+    Wrapper for Grounding DINO model using HuggingFace Transformers.
 
     This class enables open-vocabulary detection where the user can specify
     what to detect using natural language prompts.
+
+    Compatible with supervision>=0.27.0 and uses the official Transformers implementation.
     """
 
     def __init__(
         self,
-        config_path: str = None,
-        checkpoint_path: str = None,
+        model_id: str = "IDEA-Research/grounding-dino-base",
         device: str = None,
+        config_path: str = None,  # For API compatibility, not used
+        checkpoint_path: str = None,  # For API compatibility, not used
     ):
         """
-        Initialize the Grounding DINO detector.
+        Initialize the Grounding DINO detector using Transformers.
 
         Args:
-            config_path: Path to model config file
-            checkpoint_path: Path to model checkpoint
+            model_id: HuggingFace model ID (default: grounding-dino-tiny)
             device: Device to run inference on ('cpu' or 'cuda')
+            config_path: (Ignored) For API compatibility with old detector
+            checkpoint_path: (Ignored) For API compatibility with old detector
         """
-        self.config_path = config_path or str(GROUNDING_DINO_CONFIG)
-        self.checkpoint_path = checkpoint_path or str(GROUNDING_DINO_CHECKPOINT)
         self.device = device or DEVICE
+        self.model_id = model_id
 
-        # Force CPU if needed
-        if self.device == "cpu":
-            torch.cuda.is_available = lambda: False
-
-        self.model = Model(
-            model_config_path=self.config_path,
-            model_checkpoint_path=self.checkpoint_path,
-            device=self.device,
-        )
+        # Load processor and model from HuggingFace
+        print(f"Loading Grounding DINO from Transformers: {model_id}")
+        self.processor = AutoProcessor.from_pretrained(model_id)
+        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id)
+        print(f"Finish Loading Grounding DINO from Transformers: {model_id}")
 
     def detect(
         self,
         image: np.ndarray,
-        classes: str,
+        classes: list[str] | str = None,
+        text_prompt: str = None,
         box_threshold: float = BOX_THRESHOLD,
         text_threshold: float = TEXT_THRESHOLD,
     ) -> Detections:
@@ -65,23 +65,29 @@ class GroundingDINODetector:
 
         Args:
             image: Input image (RGB format, numpy array)
-            text_prompt: Text description of objects to detect (e.g., "person, car, dog")
+            classes: List of class names or comma-separated string (e.g., ["person", "car"] or "person, car")
+            text_prompt: Alternative to classes - direct text prompt (for backwards compatibility)
             box_threshold: Confidence threshold for bounding boxes
-            text_threshold: Confidence threshold for text matching
+            text_threshold: Confidence threshold for text matching (used as overall threshold)
 
         Returns:
             Detections object containing bounding boxes, confidence scores, and class IDs
         """
+        # Support both 'classes' and 'text_prompt' parameters for compatibility
+        if text_prompt is not None:
+            prompt = text_prompt
+        elif classes is not None:
+            # Convert classes to text prompt
+            if isinstance(classes, list):
+                # Handle list format: ["person", "car"] or ["person.", "car."]
+                prompt = ". ".join([cls.strip().rstrip(".") for cls in classes]) + "."
+            else:
+                # Handle string format
+                prompt = classes
+        else:
+            raise ValueError("Either 'classes' or 'text_prompt' must be provided")
 
-        # Run detection
-        detections = self.model.predict_with_classes(
-            image=image,
-            classes=classes,
-            box_threshold=box_threshold,
-            text_threshold=text_threshold,
-        )
-
-        return detections
+        return self._run_inference(image, prompt, box_threshold, text_threshold)
 
     def detect_with_caption(
         self,
@@ -102,11 +108,92 @@ class GroundingDINODetector:
         Returns:
             Detections object
         """
-        detections = self.model.predict_with_caption(
-            image=image,
-            caption=caption,
-            box_threshold=box_threshold,
+        return self._run_inference(image, caption, box_threshold, text_threshold)
+
+    def _run_inference(
+        self,
+        image: np.ndarray,
+        text: str,
+        box_threshold: float,
+        text_threshold: float,
+    ) -> Detections:
+        """
+        Internal method to run Grounding DINO inference.
+
+        Args:
+            image: RGB numpy array
+            text: Text prompt
+            box_threshold: Box confidence threshold
+            text_threshold: Text confidence threshold (used as overall threshold)
+
+        Returns:
+            supervision.Detections object
+        """
+        # Convert numpy array to PIL Image
+        if isinstance(image, np.ndarray):
+            pil_image = Image.fromarray(image)
+        else:
+            pil_image = image
+
+        # Prepare inputs
+        inputs = self.processor(images=pil_image, text=text, return_tensors="pt").to(
+            self.device
+        )
+
+        # Run inference
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+
+        # Post-process results
+        results = self.processor.post_process_grounded_object_detection(
+            outputs=outputs,
+            input_ids=inputs.input_ids,
+            target_sizes=torch.tensor([pil_image.size[::-1]]).to(self.device),
+            threshold=box_threshold,
             text_threshold=text_threshold,
+        )
+
+        zero_pos_result = results[0]
+
+        # Convert to supervision Detections format
+        detections = self._to_supervision_detections(zero_pos_result)
+
+        return detections
+
+    def _to_supervision_detections(self, results: dict) -> Detections:
+        """
+        Convert Transformers output to supervision.Detections format.
+
+        Args:
+            results: Dictionary with 'boxes', 'scores', 'labels' from post_process
+
+        Returns:
+            supervision.Detections object
+        """
+        # Extract boxes, scores, and labels
+        boxes = results["boxes"].cpu().numpy()  # [N, 4] in xyxy format
+        scores = results["scores"].cpu().numpy()  # [N]
+
+        # Handle labels - transformers v4.51.0+ returns integer ids in 'labels'
+        # and text labels in 'text_labels' (if available)
+        if "text_labels" in results:
+            labels = results["text_labels"]  # List of strings
+        else:
+            # Fallback for older versions
+            labels = results.get("labels", [])
+            if torch.is_tensor(labels):
+                labels = labels.cpu().numpy()
+
+        # Create class_id array
+        # Map each unique label to an integer ID
+        unique_labels = list(set(labels))
+        label_to_id = {label: idx for idx, label in enumerate(unique_labels)}
+        class_ids = np.array([label_to_id[label] for label in labels])
+
+        detections = Detections(
+            xyxy=boxes,
+            confidence=scores,
+            class_id=class_ids,
         )
 
         return detections

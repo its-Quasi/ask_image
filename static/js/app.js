@@ -83,7 +83,7 @@ document.addEventListener('DOMContentLoaded', function () {
         formData.append('question', textPrompt.value.trim());
         formData.append('box_threshold', boxThreshold.value);
         formData.append('text_threshold', textThreshold.value);
-        formData.append('apply_nms', false);
+        formData.append('apply_nms', applyNMS.checked);
 
         // Show loading state
         processBtn.disabled = true;

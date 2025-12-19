@@ -231,7 +231,7 @@ def ask_question():
         # Get thresholds from request (optional)
         box_threshold = float(request.form.get('box_threshold', 0.35))
         text_threshold = float(request.form.get('text_threshold', 0.25))
-        # apply_nms = request.form.get('apply_nms', 'true').lower() == 'true'
+        apply_nms = request.form.get('apply_nms', 'true').lower() == 'true'
 
         # Process question with reasoning pipeline
         proc = get_reasoning_processor()
@@ -246,7 +246,7 @@ def ask_question():
             question=question,
             box_threshold=box_threshold,
             text_threshold=text_threshold,
-            apply_nms=False,
+            apply_nms=apply_nms,
         )
 
         # Check if processing failed

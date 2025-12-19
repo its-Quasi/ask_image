@@ -8,7 +8,7 @@ import numpy as np
 import logging
 from pathlib import Path
 from supervision import Detections
-from app.models.detector_t import GroundingDINODetector
+from app.models.detector import GroundingDINODetector
 from app.models.segmenter import SAM2Segmenter
 from app.models.llm import LlmModel
 from app.models.schemas import (
@@ -378,8 +378,8 @@ class ReasoningImageProcessor:
         )
 
         # Step 4: NMS
-        # if apply_nms and len(detections.xyxy) > 0:
-        #     detections = detections.with_nms(threshold=nms_threshold)
+        if apply_nms and len(detections.xyxy) > 0:
+            detections = detections.with_nms(threshold=nms_threshold)
 
         # Step 5: Segmentation
         if len(detections.xyxy) > 0:

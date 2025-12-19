@@ -25,7 +25,7 @@ DEVICE = "cpu"
 # Detection thresholds
 BOX_THRESHOLD = 0.35
 TEXT_THRESHOLD = 0.25
-NMS_THRESHOLD = 0.8
+NMS_THRESHOLD = 0.45
 
 # Output directories
 ANNOTATED_DIR = OUTPUTS_DIR / "annotated"
